@@ -8,18 +8,18 @@
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // ==/UserScript==
 
-(function() {
-    'use strict';
+(function () {
+  "use strict";
 
-    // Configuration
-    const OLLAMA_API_ENDPOINT = 'http://localhost:11434/api/generate';
-    const MODEL_NAME = 'qwen2.5:1.5b';
+  // Configuration
+  const OLLAMA_API_ENDPOINT = "http://localhost:11434/api/generate";
+  const MODEL_NAME = "qwen2.5:1.5b";
 
-    // Simple menu options placeholder - you can replace this later with your full menu options
-        const menuOptions = [
-        {
-            label: "📝 Summarize",
-            prompt: `
+  // Simple menu options placeholder - you can replace this later with your full menu options
+  const menuOptions = [
+    {
+      label: "📝 Summarize",
+      prompt: `
 # IDENTITY and PURPOSE
 
 You are an expert content summarizer. You take content in and output a Markdown formatted summary using the format below.
@@ -45,11 +45,11 @@ Take a deep breath and think step by step about how to best accomplish this goal
 
 # INPUT:
 
-INPUT: {{TEXT}}`
-        },
-        {
-            label: "🧠 Extract Wisdom",
-            prompt: `
+INPUT: {{TEXT}}`,
+    },
+    {
+      label: "🧠 Extract Wisdom",
+      prompt: `
             # IDENTITY and PURPOSE
 
 You extract surprising, insightful, and interesting information from text content. You are interested in insights related to the purpose and meaning of life, human flourishing, the role of technology in the future of humanity, artificial intelligence and its affect on humans, memes, learning, reading, books, continuous improvement, and similar topics.
@@ -108,11 +108,11 @@ Take a step back and think step-by-step about how to achieve the best possible r
 
 # INPUT
 
-INPUT: {{TEXT}}`
-        },
-        {
-            label: "🗑 Clean Text",
-            prompt: `# IDENTITY and PURPOSE
+INPUT: {{TEXT}}`,
+    },
+    {
+      label: "🗑 Clean Text",
+      prompt: `# IDENTITY and PURPOSE
 
 You are an expert at cleaning up broken and, malformatted, text, for example: line breaks in weird places, etc.
 
@@ -130,11 +130,11 @@ You are an expert at cleaning up broken and, malformatted, text, for example: li
 
 # INPUT:
 
-INPUT: {{TEXT}}`
-        }
-    ];
+INPUT: {{TEXT}}`,
+    },
+  ];
 
-    const styles = `
+  const styles = `
         :root {
             --ollama-bg-light: #ffffff;
             --ollama-bg-dark: #1e1e1e;
@@ -152,14 +152,14 @@ INPUT: {{TEXT}}`
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.6);
+            background: transparent;
             z-index: 9999;
             display: flex;
             align-items: center;
             justify-content: center;
             opacity: 0;
             transition: opacity 0.3s ease;
-            backdrop-filter: blur(5px);
+            pointer-events: none;
         }
 
         .ollama-summary-overlay.show {
@@ -167,25 +167,45 @@ INPUT: {{TEXT}}`
         }
 
         .ollama-summary-modal {
-    background: var(--ollama-bg-light);
-    color: var(--ollama-text-light);
-    border-radius: 12px;
-    box-shadow: 0 12px 24px var(--ollama-shadow);
-    max-width: 800px; /* increased from 600px */
-    width: 90%;
-    max-height: 80%;
-    padding: 32px; /* increased from 24px */
-    position: relative;
-    transform: scale(0.9);
-    opacity: 0;
-    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    border: 1px solid var(--ollama-border-light);
-    overflow-y: auto;
-}
+            background: var(--ollama-bg-light);
+            color: var(--ollama-text-light);
+            border-radius: 12px;
+            box-shadow: 0 12px 24px var(--ollama-shadow);
+            max-width: 800px; /* increased from 600px */
+            width: 90%;
+            max-height: 80%;
+            padding: 32px; /* increased from 24px */
+            position: relative;
+            transform: scale(0.9);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 1px solid var(--ollama-border-light);
+            overflow-y: auto;
+            pointer-events: auto;
+        }
 
         .ollama-summary-modal.show {
             transform: scale(1);
             opacity: 1;
+        }
+
+        .ollama-summary-modal.ollama-summary-loading {
+            width: auto;
+            max-width: 300px;
+            height: auto;
+            cursor: move;
+            transition: all 0.3s ease;
+        }
+
+        .ollama-summary-modal.expanding {
+            max-width: 800px;
+            width: 90%;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+
+        .ollama-dragging {
+            user-select: none;
+            cursor: move;
         }
 
         .ollama-summary-close {
@@ -205,11 +225,11 @@ INPUT: {{TEXT}}`
             transform: scale(1.2) rotate(90deg);
         }
 
-.ollama-summary-content {
-    line-height: 1.6;
-    font-size: 16px;
-    padding: 0 16px;
-}
+        .ollama-summary-content {
+            line-height: 1.6;
+            font-size: 16px;
+            padding: 0 16px;
+        }
 
         .ollama-summary-content strong {
             display: block;
@@ -281,126 +301,143 @@ INPUT: {{TEXT}}`
         }
     `;
 
-    // Inject styles
-    const styleElement = document.createElement('style');
-    styleElement.textContent = styles;
-    document.head.appendChild(styleElement);
+  // Inject styles
+  const styleElement = document.createElement("style");
+  styleElement.textContent = styles;
+  document.head.appendChild(styleElement);
 
-    // Create context menu
-    function createContextMenu(x, y, selectedText) {
-        removeContextMenu();
+  // Create context menu
+  function createContextMenu(x, y, selectedText) {
+    removeContextMenu();
 
-        // Calculate position accounting for scroll
-        const posX = x;
-        const posY = y;
+    // Calculate position accounting for scroll
+    const posX = x;
+    const posY = y;
 
-        const menu = $('<div>').addClass('ollama-context-menu').css({
-            top: posY + 'px',
-            left: posX + 'px'
+    const menu = $("<div>")
+      .addClass("ollama-context-menu")
+      .css({
+        top: posY + "px",
+        left: posX + "px",
+      });
+
+    menuOptions.forEach((option) => {
+      const menuItem = $("<div>")
+        .addClass("ollama-context-menu-item")
+        .text(option.label)
+        .on("click", () => {
+          processText(selectedText, option.prompt);
+          removeContextMenu();
         });
+      menu.append(menuItem);
+    });
 
-        menuOptions.forEach(option => {
-            const menuItem = $('<div>')
-                .addClass('ollama-context-menu-item')
-                .text(option.label)
-                .on('click', () => {
-                    processText(selectedText, option.prompt);
-                    removeContextMenu();
-                });
-            menu.append(menuItem);
-        });
+    $(document.body).append(menu);
 
-        $(document.body).append(menu);
+    // Adjust position if menu goes off screen
+    const menuRect = menu[0].getBoundingClientRect();
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
 
-        // Adjust position if menu goes off screen
-        const menuRect = menu[0].getBoundingClientRect();
-        const windowWidth = window.innerWidth;
-        const windowHeight = window.innerHeight;
+    if (menuRect.right > windowWidth) {
+      menu.css("left", windowWidth - menuRect.width - 10 + "px");
+    }
+    if (menuRect.bottom > windowHeight) {
+      menu.css("top", y - menuRect.height - 10 + "px");
+    }
+  }
 
-        if (menuRect.right > windowWidth) {
-            menu.css('left', (windowWidth - menuRect.width - 10) + 'px');
+  function removeContextMenu() {
+    $(".ollama-context-menu").remove();
+  }
+
+  function processText(text, promptTemplate) {
+    const loading = showLoading();
+
+    GM_xmlhttpRequest({
+      method: "POST",
+      url: OLLAMA_API_ENDPOINT,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      data: JSON.stringify({
+        model: MODEL_NAME,
+        prompt: promptTemplate.replace("{{TEXT}}", text),
+        stream: false,
+      }),
+      onload: function (response) {
+        try {
+          const responseData = JSON.parse(response.responseText);
+          const result = responseData.response.trim();
+
+          // Get the current position of the loading modal
+          const modalRect = loading.modal[0].getBoundingClientRect();
+
+          // Add expanding class and animate to center
+          loading.modal.addClass("expanding").css({
+            transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
+            position: "fixed",
+            left: "50%",
+            top: "50%",
+            right: "auto",
+            bottom: "auto",
+            transform: "translate(-50%, -50%)",
+          });
+
+          // Wait for animation then show result
+          setTimeout(() => {
+            createSummaryModal(result);
+          }, 500);
+        } catch (error) {
+          alert("Error processing text: " + error.message);
+          loading.hide();
         }
-        if (menuRect.bottom > windowHeight) {
-            menu.css('top', (y - menuRect.height - 10) + 'px');
-        }
-    }
+      },
+      onerror: function (error) {
+        alert("Failed to process text. Ensure Ollama is running.");
+        loading.hide();
+      },
+    });
+  }
 
-    function removeContextMenu() {
-        $('.ollama-context-menu').remove();
-    }
+  function createSummaryModal(content) {
+    $(".ollama-summary-overlay").remove();
 
-    function processText(text, promptTemplate) {
-        const loadingOverlay = showLoading();
+    const overlay = $("<div>").addClass("ollama-summary-overlay");
+    const modal = $("<div>").addClass("ollama-summary-modal");
 
-        GM_xmlhttpRequest({
-            method: 'POST',
-            url: OLLAMA_API_ENDPOINT,
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            data: JSON.stringify({
-                model: MODEL_NAME,
-                prompt: promptTemplate.replace('{{TEXT}}', text),
-                stream: false
-            }),
-            onload: function(response) {
-                loadingOverlay.removeClass('show');
-                setTimeout(() => loadingOverlay.remove(), 300);
-
-                try {
-                    const responseData = JSON.parse(response.responseText);
-                    const result = responseData.response.trim();
-                    createSummaryModal(result);
-                } catch (error) {
-                    alert('Error processing text: ' + error.message);
-                }
-            },
-            onerror: function(error) {
-                loadingOverlay.removeClass('show');
-                setTimeout(() => loadingOverlay.remove(), 300);
-                alert('Failed to process text. Ensure Ollama is running.');
-            }
-        });
-    }
-
-    function createSummaryModal(content) {
-    $('.ollama-summary-overlay').remove();
-
-    const overlay = $('<div>').addClass('ollama-summary-overlay');
-    const modal = $('<div>').addClass('ollama-summary-modal');
-
-    const closeButton = $('<button>')
-        .addClass('ollama-summary-close')
-        .html('&times;')
-        .on('click', () => {
-            overlay.removeClass('show');
-            modal.removeClass('show');
-            setTimeout(() => overlay.remove(), 300);
-        });
+    const closeButton = $("<button>")
+      .addClass("ollama-summary-close")
+      .html("&times;")
+      .on("click", () => {
+        overlay.removeClass("show");
+        modal.removeClass("show");
+        setTimeout(() => overlay.remove(), 300);
+      });
     modal.append(closeButton);
 
     // New formatting logic
     const formattedContent = content
-        // First handle markdown headers
-        .replace(/^### (.*?)$/gm, '<h3>$1</h3>')
-        .replace(/^## (.*?)$/gm, '<h2>$1</h2>')
-        .replace(/^# (.*?)$/gm, '<h1>$1</h1>')
+      // First handle markdown headers
+      .replace(/^### (.*?)$/gm, "<h3>$1</h3>")
+      .replace(/^## (.*?)$/gm, "<h2>$1</h2>")
+      .replace(/^# (.*?)$/gm, "<h1>$1</h1>")
 
-        // Handle bold text
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      // Handle bold text
+      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
 
-        // Handle bullet points without extra newlines
-        .replace(/^(\s*)-\s*(.*?)(\n|$)/gm, '<li>$2</li>')
-        .replace(/^(\s*)\d+\.\s*(.*?)(\n|$)/gm, '<li>$2</li>')
+      // Handle bullet points without extra newlines
+      .replace(/^(\s*)-\s*(.*?)(\n|$)/gm, "<li>$2</li>")
+      .replace(/^(\s*)\d+\.\s*(.*?)(\n|$)/gm, "<li>$2</li>")
 
-        // Group lists
-        .replace(/<\/li>\n*<li>/g, '</li><li>')
+      // Group lists
+      .replace(/<\/li>\n*<li>/g, "</li><li>")
 
-        // Handle paragraphs, but not within lists
-        .replace(/\n\n(?!<li>)/g, '</p><p>')
+      // Handle paragraphs, but not within lists
+      .replace(/\n\n(?!<li>)/g, "</p><p>")
 
-        // Clean up any remaining newlines that aren't in lists
-        .replace(/\n(?!<li>)/g, '<br>');
+      // Clean up any remaining newlines that aren't in lists
+      .replace(/\n(?!<li>)/g, "<br>");
 
     // Add CSS for proper formatting
     const modalStyles = `
@@ -431,76 +468,149 @@ INPUT: {{TEXT}}`
         </style>
     `;
 
-    const contentDiv = $('<div>')
-        .addClass('ollama-summary-content')
-        .html(modalStyles + '<p>' + formattedContent + '</p>');
+    const contentDiv = $("<div>")
+      .addClass("ollama-summary-content")
+      .html(modalStyles + "<p>" + formattedContent + "</p>");
     modal.append(contentDiv);
 
     overlay.append(modal);
     $(document.body).append(overlay);
 
     setTimeout(() => {
-        overlay.addClass('show');
-        modal.addClass('show');
+      overlay.addClass("show");
+      modal.addClass("show");
     }, 10);
 
-    overlay.on('click', function(e) {
-        if (e.target === this) {
-            $(this).removeClass('show');
-            modal.removeClass('show');
-            setTimeout(() => $(this).remove(), 300);
-        }
+    overlay.on("click", function (e) {
+      if (e.target === this) {
+        $(this).removeClass("show");
+        modal.removeClass("show");
+        setTimeout(() => $(this).remove(), 300);
+      }
     });
 
     return overlay;
-}
+  }
 
-    function showLoading() {
-        $('.ollama-summary-overlay').remove();
+  function showLoading() {
+    $(".ollama-summary-overlay").remove();
 
-        const modal = $('<div>').addClass('ollama-summary-modal ollama-summary-loading');
-        const spinner = $('<div>').addClass('ollama-summary-spinner');
-        const loadingText = $('<div>').text('Generating summary...');
+    const overlay = $("<div>").addClass("ollama-summary-overlay");
+    const modal = $("<div>").addClass(
+      "ollama-summary-modal ollama-summary-loading",
+    );
+    const spinner = $("<div>").addClass("ollama-summary-spinner");
+    const loadingText = $("<div>").text("Generating summary...");
 
-        modal.append(spinner, loadingText);
+    modal.append(spinner, loadingText);
+    overlay.append(modal);
+    $(document.body).append(overlay);
 
-        const overlay = $('<div>').addClass('ollama-summary-overlay');
-        overlay.append(modal);
-        $(document.body).append(overlay);
+    // Store the initial position for animation later
+    const initialPosition = {
+      right: "20px",
+      bottom: "20px",
+      transform: "none",
+      margin: "0",
+    };
 
-        setTimeout(() => {
-            overlay.addClass('show');
-            modal.addClass('show');
-        }, 10);
+    modal.css({
+      position: "fixed",
+      ...initialPosition,
+    });
 
-        return overlay;
+    // Make modal draggable
+    let isDragging = false;
+    let startX;
+    let startY;
+    let modalX = window.innerWidth - modal.outerWidth() - 20;
+    let modalY = window.innerHeight - modal.outerHeight() - 20;
+
+    modal.on("mousedown", function (e) {
+      if (
+        e.target === modal[0] ||
+        $(e.target).closest(".ollama-summary-loading").length
+      ) {
+        isDragging = true;
+        startX = e.clientX - modalX;
+        startY = e.clientY - modalY;
+        modal.addClass("ollama-dragging");
+      }
+    });
+
+    $(document).on("mousemove", function (e) {
+      if (isDragging) {
+        e.preventDefault();
+
+        let newX = e.clientX - startX;
+        let newY = e.clientY - startY;
+
+        const maxX = window.innerWidth - modal.outerWidth();
+        const maxY = window.innerHeight - modal.outerHeight();
+
+        newX = Math.min(Math.max(0, newX), maxX);
+        newY = Math.min(Math.max(0, newY), maxY);
+
+        modalX = newX;
+        modalY = newY;
+        modal.css({
+          left: newX + "px",
+          top: newY + "px",
+          right: "auto",
+          bottom: "auto",
+        });
+      }
+    });
+
+    $(document).on("mouseup", function () {
+      isDragging = false;
+      modal.removeClass("ollama-dragging");
+    });
+
+    setTimeout(() => {
+      overlay.addClass("show");
+      modal.addClass("show");
+    }, 10);
+
+    return {
+      overlay: overlay,
+      modal: modal,
+      position: {
+        x: modalX,
+        y: modalY,
+      },
+      hide: function () {
+        this.overlay.removeClass("show");
+        setTimeout(() => this.overlay.remove(), 300);
+      },
+    };
+  }
+
+  // Event listeners
+  document.addEventListener("mousedown", function (e) {
+    // Check if Alt key is pressed and it's a left click
+    if (e.altKey && e.button === 0) {
+      const selectedText = window.getSelection().toString().trim();
+
+      if (selectedText) {
+        // Prevent default action
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Create context menu at click position using client coordinates
+        createContextMenu(e.clientX, e.clientY, selectedText);
+      }
     }
+  });
 
-        // Event listeners
-    document.addEventListener('mousedown', function(e) {
-        // Check if Alt key is pressed and it's a left click
-        if (e.altKey && e.button === 0) {
-            const selectedText = window.getSelection().toString().trim();
+  // Modified click event listener
+  document.addEventListener("click", function (e) {
+    // Only remove context menu if we're not clicking with Alt key pressed
+    if (!e.altKey && !$(e.target).closest(".ollama-context-menu").length) {
+      removeContextMenu();
+    }
+  });
 
-            if (selectedText) {
-                // Prevent default action
-                e.preventDefault();
-                e.stopPropagation();
-
-                // Create context menu at click position using client coordinates
-                createContextMenu(e.clientX, e.clientY, selectedText);
-            }
-        }
-    });
-
-    // Modified click event listener
-    document.addEventListener('click', function(e) {
-        // Only remove context menu if we're not clicking with Alt key pressed
-        if (!e.altKey && !$(e.target).closest('.ollama-context-menu').length) {
-            removeContextMenu();
-        }
-    });
-
-    // Close context menu when scrolling
-    document.addEventListener('scroll', removeContextMenu);
+  // Close context menu when scrolling
+  document.addEventListener("scroll", removeContextMenu);
 })();
